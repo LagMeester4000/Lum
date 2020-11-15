@@ -1,0 +1,17 @@
+
+proc main() int
+{
+	if 5 > 25	
+	{
+
+	}
+	elif 4 <= 53
+	{
+		var a_cond: int = (5 + 29) * 5 >= 10;
+	}
+	else
+	{
+		var other_cond: int = 3 < 5;
+	}
+}
+

@@ -1,0 +1,176 @@
+semi_colon (37)
+
+
+gc hash
+go over each object referenced on the stack, and all their children recursively. calculate a "connection hash", which is stored in each object
+any objects that does not have said hash will be removed
+
+
+background removal
+this method does not use refcounted pointers
+have two buffers for the state of the vm
+on gc, the entire stack reference tree is moved to the new buffer, the old buffer will be cleared.
+
+optimization:
+problem: when copying the entire stack reference tree, there will be times when chunks of memory/parts of the tree are copied multiple times.
+here are a few ways to prevent this (not all of them will be fast)
+1. Generational index + Clear all memory of older buffer
+After swapping the vm buffers, you memset(0) the old buffer that is no longer used.
+This could be very slow, but maybe it could be done on a separate thread.
+Now, before writing a part of the tree, you can see if that memory has already been written by checking if the generational index at the 
+relative memory location has increased at all. If it has, you can skip this part of the tree, because it has been written already.
+2. "Written" grid
+Instead of clearing the entire vm memory buffer, you keep a small "written" bitset buffer. This will keep a bit for each "chunk" of memory that
+has been written to. A "chunk" being the minimum size of an allocated object (4, 8, or 16 bytes, it's a set amount of bytes). Now you only have
+to clear this bitset area of memory with every swap. The bitset area will be "8 * chunk_size" times smaller than the full memory area. 
+One downside of this method is that every object has to be aligned on this "chunk" size grid, but this might be a good idea to do anyway.
+If your vm size is 4mb, the "written" field will be 32kb (when chunk size is 16 bytes)
+This grid can be used as a memory allocator, which will then also automatically be synced when gc happens.
+
+
+
+size calcs:
+pos
+vel
+state
+pstate
+min
+max
+arm
+oarm
+bullets
+= 56 bytes (without gaps)
+for a bunch of shit.
+
+tilemap data:
+128x128 tilemap
+tile {
+  u16 ind,
+}
+32,768 bytes
+
+
+
+
+
+More gc written grid ideas
+(btw the word grid comes from the way I imagine the memory in my head)
+Since the used memory is copied over every time a gc happens, and it has to 
+traverse the whole memory tree, it could be a good idea to also defragment the 
+memory while copying.
+
+Allocation: 
+The gc grid allocator temporarily turns into a linear allocator.
+The memory region is operating on a clean slate of memory, you can fill in the 
+memory tightly packed. 
+You go over the memory tree (all globals and their fields), and allocate all the 
+data into the other buffer from scratch (and ofc set the bits in the written grid).
+
+Double write problem: 
+Now you cannot use the written bits to represent the gc copy
+process anymore, so you need some other way to find out if the memory has been
+written yet, or more importantly, where the memory is now (multiple pointers to 
+the same data). 
+You can have a hash table with the old memory location as a key and the new memory
+location as the value. But I would like to have a faster way to check if the 
+memory has already been set, because that check runs for every copied object.
+I could have a secondary much larger grid (represents the old memory locations), 
+that would then be used to indicate that no memory in a chunk of that grid has not 
+been written to at all yet. If the bit in your memory region is set (true), that 
+means a subsequent check will need to be performed to find out if the pointer is 
+actually already allocated (using hash map), and if a new pointer needs to be set.
+Now you have some structure like this:
+Bytes_Per_Object :: 16;
+Transfer_Chunk_Size :: 8 * Bytes_Per_Object; // In bytes
+Heap_Size :: 1024;
+Vm_Heap :: struct
+{
+	heap_mem: [Heap_Size]byte,
+	heap_written_grid: [Heap_Size/Bytes_Per_Object]byte,
+	transfer_written_chunks: [Heap_Size/Transver_Chunk_Size]byte,
+	transfer_table: map[Vm_Pointer]Vm_Pointer,
+}
+
+Steps:
+1. Set the other heap's allocator to linear mode.
+2. Go over the memory tree of the globals.
+3. For each object:
+	* Check if the memory has already been copied by checking the bit in 
+	  "transfer_written_chunks" corresponding to the old memory address. If the 
+	  bit is not set, do the following:
+    	A Allocate memory on new heap (which marks allocated spots on 
+      	  "heap_written_grid")
+        B Map old memory location to new memory location in "transfer_table"
+        C Set the correct bit "transfer_written_chunks", on the spot corresponding 
+          to the old memory location
+    * If the bit was actually set, check if the data was actually copied by
+      searching in the "transfer_table". If so, set the pointer of the copied
+      object to the new pointer from the hashmap. If not, go to step A.
+
+
+
+
+
+gc grid revelation: you don't need two buffers
+Instead of using two buffers and swapping between them for gc, you can just clear
+the "written grid", traverse the memory tree, and register all known values in the
+"written grid" again.
+
+
+
+
+
+
+Stop-and-copy
+
+After doing some more research I found out that this is very similar to another
+technique called stop-and-copy garbage collection, but that technique is a bit 
+smarter with how it syncs up already copied pointers. I'm going to write about
+how this technique works and how to improve it by adding a second mode.
+
+Stop-and-copy is a gc algorithm also called Cheney's algorithm (invented all the
+way back in 1970!). In this algorithm you have have two heaps of memory for your
+virtual machine, but only one of them is used at once. When a garbage collection
+happens, you recursively iterate over the memory tree and do the following steps
+for each pointer:
+* If the memory not copied yet (explained later)
+    1. Allocate the memory in the other heap (which is using a linear allocator)
+    2. Set the memory in the old heap to the address in the new heap
+* If the memory is already copied
+    * Update the pointer in the last copied (in new heap) memory to use the new
+      pointer that is located at the old memory location in the old heap.
+You know a branch of the memory tree has been copied when the first bytes of the
+memory of the branch in the old heap has a valid pointer to an address in the new
+heap.
+
+This algorithm has two big advantages:
+* The complexity is based in the live objects, the unused objects are just ignored
+* It automatically defragments the memory, since it creates the tightest fit 
+  when copying the memory over to the other heap
+
+The one big disadvantage to this algorithm is that actually copying the memory can
+take a substantial amount of time, so using this algorithm on a large heap could
+hurt performance wise. Which is why I think it might be a good idea to have a
+faster garbage collector mode to work along with the slower one.
+
+My idea is to have a faster gc mode that does not copy the data to a new buffer,
+but also does not defragment it. It only frees the memory that isn't used and
+leaves the live data as is. This idea is the earlier algorithm I was working on
+before finding stop-and-copy. All you do is:
+* Have an allocator that manages all the memory on the heap
+* On garbage collection, reset the allocator, meaning it acts like no memory on the
+  heap has been used
+* Now go over each live object in the memory tree and mark their used memory as
+  allocations in the custom allocator
+Now the allocator only knows about the live objects as allocations, and the old 
+unused allocations are ignore.
+
+How to choose which garbage collection mode to use?
+I would make some statistic before performing garbage collection. Calculate the 
+amount of memory used over the amount of fragmentation in the allocator. If this
+value is high enough, stop-and-copy should be used.
+
+
+
+
+

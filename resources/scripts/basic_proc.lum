@@ -1,0 +1,7 @@
+
+proc my_proc() int
+{
+	var my_int: int = 5;
+	my_int = my_int + 24;
+}
+

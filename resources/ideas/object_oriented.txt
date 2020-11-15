@@ -1,0 +1,42 @@
+
+I'm debating to add an OOP like way to call functions. 
+It would look like this:
+
+struct Player
+{
+	x: num,
+	y: num,
+}
+
+proc move_player_x(this: Player, v: num)
+{
+	this.x += v;
+}
+
+proc main()
+{
+	var player = new(Player);
+	player.move_player_x(5);
+}
+
+Though if you still had to write move_player_x when using the dot operator,
+it would be quite useless. My other idea is to make a new procedure declaration
+too, it would look something like this:
+
+proc(Player) move(v: num)
+{
+	this.x = v;
+}
+
+proc main()
+{
+	var player = new(Player);
+	player.move(5);
+}
+
+Now you can have "overloads" on procedures that belong to types.
+The problem I have with this is that it makes the syntax more ambiguous, 
+it's pretty clear what a normal function declaration does, but when you see
+this new declaration you will need to know what it means.
+
+

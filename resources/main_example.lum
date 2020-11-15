@@ -1,0 +1,190 @@
+
+proc sum_of_vals() int
+{
+	// Variable declaration with inferred types
+	var v = 5;
+	var r = 10;
+	
+	return v + r;
+}
+
+// Simple procedure (function)
+proc multiple_of_sqrt2(first_argument: num) num
+{
+	// Explicitly declared type
+	var ret: num = sqrt(2) * first_argument;
+	return ret;
+}
+
+
+struct Player
+{
+	x: num,
+	y: num,
+}
+
+// This could be considered a "constructor"
+proc make_player(x: num, y: num) Player
+{
+	// Create a new Player object (garbage collected object)
+	var player = new(Player);
+	player.x = x;
+	player.y = y;
+	return player;
+}
+
+// Structs can only exist on the heap
+// Each variable of type Player (or any struct) is a reference to an object of said type
+// This function will move the player object 
+proc move_player(player: Player, x_vel: num, y_vel: num)
+{
+	player.x += x_vel;
+	player.y += y_vel;
+}
+
+
+proc basic_types()
+{
+	var boolean_val: bool = true;
+	var integer_val: int = 28;
+	var number_val: num = 3.14;
+	var string_val: string = "a value";
+
+	// Conversion between numbers is implicit
+	// If both of them are used in an expression, it results in a num
+	var some_int: int = 2;
+	var some_num: num = 0.5;
+	var results_as_num = some_int + some_num;
+
+	// Boolean values cannot be implicitly converted to anything
+	// var an_int: int = false; // ERROR
+	// var a_string: string = true; // ERROR
+
+	// Values can be appended to strings in an expression
+	//   as long as the expression starts with a string
+	var appended_string = "first_value=" + 5 + " second_value=" + false;
+	// var appended_string = 5 + " is a value"; // ERROR
+}
+
+
+proc operators()
+{
+	// This language only has very basic operators
+	var x = 5.4;
+	x += 1.2;
+	x -= 1.2;
+	x *= 1.2;
+	x /= 1.2;
+	x = 1.5 + 2.8;
+	x = 1.5 - 2.8;
+	x = 1.5 * 2.8;
+	x = 1.5 / 2.8;
+
+	var b: bool; 
+	b = (x == 10);
+	b = (x <= 10);
+	b = (x < 10);
+	b = (x >= 10);
+	b = (x > 10);
+
+	// Boolean logic operators are replaced with keywords
+	if x > 5 and x < 10 {}
+	if x <= 25 or x >= 30 {}
+	if not x > 5 {}
+}
+
+
+proc arrays()
+{
+	// Arrays can be initialized in multiple ways
+	var new_array = new([]int);
+	var new_array_sized = new([50]int);
+	var array_initialized = []int { 5, 10, 15 };
+
+	// Uninitialized arrays will be initialized automatically when used
+	var array_uninitialized: []int;
+	append(array_uninitialized, 5);
+
+	// Arrays can be iterated through like so
+	{
+		var ar = []string { "this ", "will ", "be ", "printed!" };
+		for val in ar
+		{
+			print(val);
+		}
+		// Or with the index of the value
+		for val, i in ar
+		{
+			print(i, val);
+		}
+		// Or just the index
+		for _, i in ar
+		{
+			print(i);
+		}
+	}
+
+	// Arrays have some built in functions
+	{
+		var ar = []string { "apple", "pear" };
+		append(ar, "banana"); // Adds element at end of array
+		pop(ar); // Removes last element
+		ar_length = len(ar);
+		ar_capacity = cap(ar); // Might not add this one
+	}
+}
+
+
+proc loops()
+{
+	// Other than the array for loop shown above, there is a normal for loop
+	for var i = 0; i < 5; i += 1
+	{
+		print(i);
+	}
+
+	// And while loops
+	var i = 0;
+	while i < 8;
+	{
+		print(i);
+		i += 1;
+	}
+
+	// You can break out of loops
+	var l_count = 0;
+	while true
+	{
+		if l_count = 0
+		{
+			break;
+		}
+		l_count += 1;
+	}
+	// And continue
+	for var j = 0; j < 20; j += 1
+	{
+		if j == 15
+		{
+			continue;
+		}
+		print(j);
+	}
+}
+
+
+proc strings()
+{
+	// Strings behave like arrays, and can use the basic array functions too
+	var a_string = "letters: abcd";
+	append(a_string, "e");
+	pop(a_string);
+	string_length = len(a_string);
+
+	// They have some additional properties
+	var str = "";
+	str += "value";
+	if str == "value"
+	{}
+}
+

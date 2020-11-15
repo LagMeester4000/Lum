@@ -1,0 +1,58 @@
+should var_handle be relative to the scope it is declared in?
+it cannot be when the variable resides in global or parameter scope
+i have some questions to make it more clear for myself.
+
+when is it accessed in the body builder?
+the var handle is used in expressions to get the type (or later memory location) of the declared variable.
+{
+    var my_var: int = 5;
+    {
+        var maths: int = my_var + 25;
+    }
+}
+ooh i get it now.
+the var_handle is instantiated at the moment a new expression is created, so it is valid for the scope that the expression lives in.
+two var_handles to the same variable can be different:
+{
+    var my_var: int = 5;
+    {
+        // The "my_var" handle in the expression has a scope_depth of 1
+        var maths: int = my_var + 25;
+	{
+            // The "my_var" handle in this expression has a different scope_depth value (2)
+            var other_maths: int = my_var * 40;
+        }
+    }
+}
+there is no situation where a var_handle from an old scope is used in a new scope, so it being relative is fine. when a variable is referenced
+in another scope, it will make a new variable handle relative to the CURRENT scope.
+
+what happens if it is not relative?
+if the var_handle is nor relative, there will need to be another indication of which scope it is in, this is the main problem that it is 
+trying to solve.
+there can be multiple scopes at the same depth that can be used at different times:
+{
+    if something
+    {
+        // Scope 1 with depth 1
+        var scope_1_variable: int = 10;        
+    }
+
+    for it in container
+    {
+        // Scope 2 with depth 1
+        var scope_2_variable: int = 25;
+    }
+}
+how would you point to both of these variables with a non-relative handle? 
+1. you flatten the declaration datastructure, now every variable is declared in a single array and you can easilly index it.
+now you lost the property of having multiple variables of the same name residing in different scopes of the same depth (unless using number 2).
+now you also don't represent the data in a way that it actually works. there are multiple scopes, but one array. this is fine for optimization
+reasons but doesn't make the most sense.
+by doing this you also increase the complexity of searching for variables in any scope (unless some other datastructure is used).
+2. you make a scope_handle that is used in the var_handle (or in the flattened variable declaration datastructure).
+you make an extra datastructure that has all of the scopes in the function, and have scope_handle type that can index said structure.
+this could work well, but adds some complexity.
+
+
+
