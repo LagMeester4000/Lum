@@ -9,6 +9,8 @@ Token_Type :: enum
 
 	BEGIN_CHECKABLE,
 
+	BEGIN_WORDS,
+
 	Key_Proc,
 	Key_Struct,
 	Key_Return,
@@ -30,6 +32,12 @@ Token_Type :: enum
 	//   when parsing types
 	//Key_Int,
 	//Key_Float,
+
+	// Literals that can be read directly
+	True,
+	False,
+
+	END_WORDS,
 
 	Block_Open,
 	Block_Close,
@@ -55,10 +63,6 @@ Token_Type :: enum
 	Semi_Colon,
 	Colon,
 
-	// Literals that can be read directly
-	True,
-	False,
-
 	END_CHECKABLE,
 
 	Int_Number, // 1523
@@ -74,6 +78,8 @@ Token_Type_Strings :: [?]string
 	"",
 
 	"", // BEGIN_CHECKABLE
+
+	"", // BEGIN_WORDS
 
 	"proc",
 	"struct",
@@ -94,6 +100,10 @@ Token_Type_Strings :: [?]string
 
 	//"int",
 	//"float",
+	"true",
+	"false",
+
+	"", // END_WORDS
 
 	"{",
 	"}",
@@ -118,9 +128,6 @@ Token_Type_Strings :: [?]string
 	",",
 	";",
 	":",
-
-	"true",
-	"false",
 
 	"", // END_CHECKABLE
 
@@ -195,6 +202,17 @@ lex :: proc(inp: string, allocator := context.allocator) -> Lexer
 	};
 }
 
+is_keyword :: proc(token_type: int) -> bool
+{
+	return token_type > int(Token_Type.BEGIN_WORDS) && 
+		token_type < int(Token_Type.END_WORDS);
+}
+
+is_keyword_char :: proc(c: u8) -> bool
+{
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
 _lex :: proc(inp: string, allocator := context.allocator) -> []Token
 {
 	ret := make([dynamic]Token, allocator);
@@ -221,9 +239,27 @@ _lex :: proc(inp: string, allocator := context.allocator) -> []Token
 					tok_type < int(Token_Type.END_CHECKABLE);
 					tok_type += 1
 				{
+					if tok_type == int(Token_Type.BEGIN_WORDS) || 
+						tok_type == int(Token_Type.END_WORDS)
+					{
+						continue;
+					}
+
 					tok_str := token_type_strings_table[tok_type];
 					if str.match_string_part(inp, tok_str, i32(i))
 					{
+						if is_keyword(tok_type)
+						{
+							wanted_ind := i + len(tok_str);
+							if wanted_ind < len(inp)
+							{
+								if is_keyword_char(inp[wanted_ind])
+								{
+									break word_match;
+								}
+							}
+						}
+
 						push := Token {
 							type = Token_Type(tok_type),
 							begin = make_pos(inp, i),

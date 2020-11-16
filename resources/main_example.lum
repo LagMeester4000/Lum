@@ -42,6 +42,15 @@ proc move_player(player: Player, x_vel: num, y_vel: num)
 	player.y += y_vel;
 }
 
+proc test_structs()
+{
+	// Because you get a reference to an object from new(), it can be null
+	var player: Player = null;
+
+	// This is not allowed:
+	// var player = null; // ERROR
+	// Because the type is unknown
+}
 
 proc basic_types()
 {

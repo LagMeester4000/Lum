@@ -1,0 +1,31 @@
+I might want to add this to help with creating lower memory usage.
+The idea is to have a builtin delete() procedure that sets the given reference to
+null and instantly frees the passed part of the memory tree of the allocator.
+
+struct Player
+{
+	x: num,
+	y: num,
+}
+
+proc test_delete()
+{
+	var player = new(Player);
+	player.x = 4;
+	player.y = 10;
+	//update_game_with_player(player);
+
+	// We are now done with the player object and want to delete it immediately
+	//   to free the memory
+	delete(player);
+
+	// After deleting the object, the "player" reference is set to null
+	assert(player == null);
+}
+
+Keep in mind: THIS IS NOT A MANUALLY MANAGED LANGUAGE. This is simply an
+optimization that can be used when the garbage collection fails to do its job well
+enough.
+Furthermore, I won't add this right now, because I don't know if it will even be
+that useful. I want to make some applications first to see how fast the memory fills
+up (keep in mind the heap has a size of 1-4mb).

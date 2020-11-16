@@ -15,6 +15,19 @@ error :: proc(token: lex.Token, message: ..any)
 	fmt.print("\n");
 }
 
+type_name :: proc(id: Type_Id, builder: ^Body_Builder) -> string
+{
+	t := builder.global_scope.type_table[id];
+	switch tv in t
+	{
+	case Basic_Type_Decl:
+		return tv.name;
+	case Struct_Decl:
+		return tv.name;
+	}
+	return "";
+}
+
 declare_var :: proc(scope: ^Scope, var: Var_Decl)
 {
 	append(&scope.decls, var);
@@ -108,6 +121,51 @@ build_body :: proc(procedure: ^Proc_Decl, glob_scope: ^Global_Scope,
 {
 	builder: Body_Builder;
 	builder.decl = procedure;
+
+	build_block(procedure.body_node.block, &builder, lexer);
+}
+
+// Checks the correctness of an if statement just created
+// The caller should keep a pointer to the previous symbol, which should not be
+//   updated if this function returns false
+// old_sym: ^Symbol = nil;
+// for true
+// {
+// 	   sym := build_statement(...);
+// 	   if !check_if_correctness(...) do old_sym = sym;
+// }
+check_if_correctness :: proc(new_sym, prev_sym: ^Symbol, 
+	builder: ^Body_Builder, lexer: ^lex.Lexer) -> (ok: bool)
+{
+	if_error := false;
+	as_cond, is_cond := new_sym.(Condition_Branch);
+	if is_cond
+	{
+		if prev_sym != nil
+		{
+			old_as_cond, old_is_cond := prev_sym.(Condition_Branch);
+			if old_is_cond
+			{
+				if as_cond.if_type == .ElseIf && 
+					old_as_cond.if_type == .Else
+				{
+					error({}, "Cannot have an elif statement after an else statement");
+					if_error = true;
+				}
+			}
+		}
+		else
+		{
+			// Cannot be else or elseif
+			if as_cond.if_type == .ElseIf ||
+				as_cond.if_type == .Else
+			{
+				error({}, "The first statement cannot be an elif or else statement");
+				if_error = true;
+			}
+		}
+	}
+	return if_error;
 }
 
 build_block :: proc(block: ^ast.Block, builder: ^Body_Builder, lexer: ^lex.Lexer)
@@ -117,15 +175,27 @@ build_block :: proc(block: ^ast.Block, builder: ^Body_Builder, lexer: ^lex.Lexer
 	append(&builder.scope_stack, &this_scope);
 	defer pop(&builder.scope_stack);
 
+	prev_sym: ^Symbol = nil;
+
 	for stmt in &block.exprs
 	{
 		sym := build_statement(stmt, builder, lexer);
 		append(&this_scope.symbols, sym);
+
+		// Special check needs to be performed if it's an if statement
+		// This seems like an ugly hack but I could not find any other
+		//   way to check for errors in the if statements
+		if !check_if_correctness(sym, prev_sym, builder, lexer) do prev_sym = sym;
 	}
 
 	ret := new(Symbol);
 	ret^ = this_scope;
 	return ret;
+}
+
+current_scope :: proc(builder: ^Body_Builder) -> ^Scope
+{
+	return builder.scope_stack[len(builder.scope_stack) - 1];
 }
 
 build_statement :: proc(statement: ^ast.Stmt, builder: ^Body_Builder, 
@@ -138,14 +208,145 @@ build_statement :: proc(statement: ^ast.Stmt, builder: ^Body_Builder,
 		return build_block(&s, builder, lexer);
 
 	case ast.Var_Decl:
+		dec: Var_Decl;
+		dec.name = lex.get_token_string(s.name, lexer);
 
+		if s.type != nil
+		{
+			// Type is given
+			dec.type = find_type_from_node(builder.global_scope, s.type, lexer);
+			declare_var(current_scope(builder), dec);
+			ret := new(Symbol);
+			ret^ = dec;
+			return ret;
+		}
+		else
+		{
+			// Type is inferred
+			if s.assignment == nil 
+			{
+				unreachable("variable declaration both has no type and no assignment");
+			}
+			expr := build_expr(s.assignment, builder, lexer, true);
+			dec.type = expr.resulting_type;
+			declare_var(current_scope(builder), dec);
 
-	case ast.Assign: // Actually an expression, but held by something else?
+			decl_assign: Var_Decl_Assign;
+			decl_assign.decl = dec;
+			decl_assign.expr = expr;
+			ret := new(Symbol);
+			ret^ = decl_assign;
+			return ret;
+		}
+
 	case ast.If:
+		if s.if_type == .Else
+		{
+			// No expr
+			branch: Condition_Branch;
+			branch.if_type = s.if_type;
+			branch.block = build_block(s.block, builder, lexer);
+			branch.expr = nil;
+			ret := new(Symbol);
+			ret^ = branch;
+			return ret;
+		}
+		else
+		{
+			// Common case
+			branch: Condition_Branch;
+			branch.if_type = s.if_type;
+			branch.expr = build_expr(s.condition, builder, lexer);
+			branch.block = build_block(s.block, builder, lexer);
+			ret := new(Symbol);
+			ret^ = branch;
+			return ret;
+		}
+
 	case ast.Return:
+		retur: Return;
+		retur.expr = build_expr(s.expr, builder, lexer);
+		ret := new(Symbol);
+		ret^ = retur;
+		return ret;
+
 	case ast.Break:
+		ret := new(Symbol);
+		ret^ = Break{};
+		return ret;
+
 	case ast.Continue:
+		ret := new(Symbol);
+		ret^ = Continue{};
+		return ret;
+
 	case ast.Stmt_Expr:
+		// Check for function call
+		expr := build_expr(s.expr, builder, lexer);
+
+		// Expect function
+		{
+			//func: Function_Call;
+			as_access, access_ok := expr.variant.(Access_Chain);
+			if !access_ok
+			{
+				error({}, "Loose expression is not a procedure call");
+			}
+			else
+			{
+				if len(as_access.chain) > 1
+				{
+					error({}, "Scoped procedure calls do not exist (yet)");
+				}
+				else
+				{
+					ac := as_access.chain[0];
+					as_function_call, function_call_ok := ac.(Function_Call);
+					if !function_call_ok
+					{
+						error({}, "Loose access is not a procedure call");
+					}
+					else
+					{
+						// Success case
+						ret := new(Symbol);
+						ret^ = as_function_call;
+						return ret;
+					}
+				}
+			}
+		}
+
+	case ast.Assign:
+		assign: Assignment;
+
+		// Make assignee
+		{
+			assign.assigned_to = build_expr(s.assigned_to, builder, lexer);
+			is_access, access_ok := assign.assigned_to.variant.(Access_Chain);
+			if !access_ok
+			{
+				error({}, "Left hand side of assignment is not a variable");
+			}
+		}
+
+		// Make expr and check type
+		{
+			assign.value = build_expr(s.value, builder, lexer);
+			if assign.value.resulting_type != assign.assigned_to.resulting_type
+			{
+				// TODO: type conversion on assignment
+				error({}, "Cannot convert type ", 
+					type_name(assign.value.resulting_type, builder), 
+					" to type", 
+					type_name(assign.assigned_to.resulting_type, builder));
+			}
+		}
+
+		ret := new(Symbol);
+		ret^ = assign;
+		return ret;
+
 	case ast.While_Loop:
 	case ast.For_Loop:
 	case ast.For_Iterator:
@@ -364,22 +565,81 @@ build_expr :: proc(expr: ^ast.Expr, builder: ^Body_Builder,
 
 		ret.variant = lit;
 
-	case ast.Call_Expr:
+	case ast.Call_Expr: 
+		// Idk if this acually happens
+		//panic("ast.Call_Expr exists here");
+		// It does happen
+		call: Function_Call;
+
+		// Find proc
+		proc_string := lex.get_token_string(e.name, lexer);
+		call.procedure = find_proc(builder.global_scope, proc_string);
+
+		// Check if the argument count lines up
+		arg_count := len(e.arguments);
+		proc_decl := builder.global_scope.proc_table[call.procedure];
+		real_arg_count := len(proc_decl.arguments);
+		if arg_count != real_arg_count
+		{
+			error({}, "Function called with incorrect amount of arguments.");
+			break;
+		}
+
+		for arg, arg_i in e.arguments
+		{
+			arg_expr := build_expr(arg, builder, lexer);
+			append(&call.arguments, arg_expr);
+
+			real_arg_type := proc_decl.arguments[arg_i].type;
+			if real_arg_type != arg_expr.resulting_type
+			{
+				error({}, "Expected type ", real_arg_type, " got type ", 
+					arg_expr.resulting_type);
+			}
+		}
+
+		chain: Access_Chain;
+		append(&chain.chain, call);
+		ret.variant = chain;
 
 	case ast.Access_Identifier:
+		ref_var_name := lex.get_token_string(e.name, lexer);
+		ref_var, ok := find_var(builder, ref_var_name);
+		if !ok
+		{
+			error(e.name, "Could not find local variable named ", ref_var_name,
+				".");
+		}
+
+		chain: Access_Chain;
+		append(&chain.chain, ref_var);
+		ret.variant = chain;
 
 	case ast.Scope_Access:
+		// TODO: unimplemented
+		unimplemented("I don't want to do this right now");
 
 	case ast.Array_Access:
+		unreachable("raw array access");
 
 	case ast.Assign:
-
+		// TODO: unimplemented
+		unimplemented("I don't want to do this right now");
 	}
 
-	if is_root
+	//if is_root
+	if true
 	{
 		// If this is the root expression, initiate the 
+		// ...? the what? finish your sentence
+		// TODO: finish the sentence
+		// If this is the root expression, find the type for the expression
+		// I actually think this should be done either way, since it is cached
+		//   in the expression, it doesn't cost anything to call multiple times
+
+		// This will also calculate/cache the type
+		get_expr_type(ret, builder);
 	}
 
-	return {};
+	return ret;
 }

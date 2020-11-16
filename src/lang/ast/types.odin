@@ -15,7 +15,7 @@ Ast :: struct
 	allocator: mem.Arena,
 	lexer: lex.Lexer,
 
-	root: ^Node,
+	root: ^Block,
 
 	current_token: lex.Token,
 	current_token_index: int,
@@ -150,13 +150,6 @@ Access_Identifier :: struct
 	name: lex.Token,
 }
 
-Assign :: struct 
-{
-	using _: Expr,
-	assigned_to: ^Expr,
-	value: ^Expr,
-}
-
 // Anything followed by a dot
 Scope_Access :: struct
 {
@@ -171,10 +164,12 @@ Array_Access :: struct
 	expr: ^Expr,
 }
 
+If_Type :: enum { If, ElseIf, Else }
+
 If :: struct 
 {
 	using _: Stmt,
-	if_type: enum { If, ElseIf, Else },
+	if_type: If_Type,
 	condition: ^Expr,
 	block: ^Block,
 }
@@ -203,6 +198,13 @@ Stmt_Expr :: struct
 {
 	using _: Stmt,	
 	expr: ^Expr,
+}
+
+Assign :: struct 
+{
+	using _: Stmt,
+	assigned_to: ^Expr,
+	value: ^Expr,
 }
 
 While_Loop :: struct

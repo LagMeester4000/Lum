@@ -24,7 +24,8 @@ parse :: proc(inp: string) -> Ast
 	ret.current_token_index = 0;
 	ret.current_token = ret.lexer.tokens[0];
 	//ret.root = parse_statement(&ret);
-	ret.root = cast(^Node)parse_block(&ret, true);
+	//ret.root = cast(^Node)parse_block(&ret, true);
+	ret.root = parse_block(&ret, true);
 	return ret;
 }
 
@@ -74,11 +75,12 @@ advance_token :: proc(ast: ^Ast) -> lex.Token
 }
 
 // TODO: Error reporting
-expect_token :: proc(ast: ^Ast, kind: lex.Token_Type) -> lex.Token
+expect_token :: proc(ast: ^Ast, kind: lex.Token_Type, caller := #caller_location) -> lex.Token
 {
 	ret := advance_token(ast);
 	if ret.type != kind
 	{
+		fmt.println(caller);
 		fmt.println("Parse error(", ret.begin.line, ",", ret.begin.char, 
 			"): expected", kind, ", got", ret.type);
 	}
@@ -378,9 +380,9 @@ parse_block :: proc(ast: ^Ast, root := false) -> ^Block
 {
 	if root == false do expect_token(ast, .Block_Open);
 	block := make_node(Block);
-	if ast.current_token.type == .Block_Open
+	//if ast.current_token.type == .Block_Open
 	{
-		next_token(ast);
+		//next_token(ast);
 
 		for 
 		{
@@ -425,8 +427,14 @@ parse_statement :: proc(ast: ^Ast) -> ^Stmt
 		var := make_node(Var_Decl);
 		next_token(ast);
 		var.name = expect_token(ast, .Identifier);
-		expect_token(ast, .Colon);
-		var.type = parse_type_sig(ast);
+		//expect_token(ast, .Colon);
+		//var.type = parse_type_sig(ast);
+
+		// Optional specified type
+		if allow_token(ast, .Colon)
+		{
+			var.type = parse_type_sig(ast);
+		}
 
 		// Assignment
 		if allow_token(ast, .Equals)
@@ -465,7 +473,8 @@ parse_statement :: proc(ast: ^Ast) -> ^Stmt
 		}
 
 		// Return
-		if allow_token(ast, .Block_Open) == false
+		//if allow_token(ast, .Block_Open) == false
+		if ast.current_token.type != .Block_Open
 		{
 			// There is a type
 			proc_def.ret = parse_type_sig(ast);
@@ -498,6 +507,8 @@ parse_statement :: proc(ast: ^Ast) -> ^Stmt
 				append(&struct_def.fields, field);
 			}
 
+			// Allow for optional comma after last field
+			allow_token(ast, .Comma);
 			expect_token(ast, .Block_Close);
 		}
 
@@ -531,6 +542,7 @@ parse_statement :: proc(ast: ^Ast) -> ^Stmt
 		next_token(ast);
 		ret := make_node(Return);
 		ret.expr = parse_expr(ast);
+		expect_token(ast, .Semi_Colon);
 		return ret;
 
 	case .Key_Break:
@@ -584,6 +596,7 @@ parse_statement :: proc(ast: ^Ast) -> ^Stmt
 	case .Identifier:
 		// Can be eiter function call or assignment
 		// No need to get the next token, it is needed for the expr
+		// TODO: check for function call can actually be done inside the parser
 		first_expr := parse_expr(ast);
 
 		if allow_token(ast, .Equals)
@@ -594,6 +607,7 @@ parse_statement :: proc(ast: ^Ast) -> ^Stmt
 			assign := make_node(Assign);
 			assign.assigned_to = first_expr;
 			assign.value = assign_expr;
+			return assign;
 		}
 		else if allow_token(ast, .Semi_Colon)
 		{

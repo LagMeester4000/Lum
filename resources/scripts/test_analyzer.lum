@@ -1,0 +1,13 @@
+
+proc add(left: int, right: int) int
+{
+	return left + right;
+}
+
+proc main()
+{
+	var a_num: num = 5;
+	var b = a_num;
+	var some: int = add(a_num, 5);
+}
+

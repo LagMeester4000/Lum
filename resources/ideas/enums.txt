@@ -1,0 +1,26 @@
+This is a feature that I will definitely add ad some point. 
+I think just using the they way enums work on Odin is good enough.
+
+enum PlayerState
+{
+	None,
+	Standing,
+	Crouching,
+	Jumping,
+}
+
+struct Player
+{
+	state: PlayerState,
+}
+
+proc test_enums()
+{
+	var player = new(Player);
+	player.state = .Standing;
+	player.state = PlayerState.Crouching;
+
+	var defined_state: PlayerState = .Jumping;
+	// If the enum type is not known, you will need to specify
+	var loose_state = PlayerState.Jumping;
+}

@@ -33,6 +33,17 @@ parse_file_test :: proc(filename: string)
 	fmt.println();
 }
 
+analyze_file_test :: proc(filename: string)
+{
+	fmt.println(filename, "parsing:");
+	file, ok := os.read_entire_file(filename);
+	defer if ok do delete(file);
+	syntax_tree := ast.parse(string(file));
+	node := syntax_tree.root;
+	scope := semantic.make_global_scope();
+	semantic.analyze(&scope, node, &syntax_tree.lexer);
+	fmt.println("done");
+}
 
 
 test_lexer :: proc()
@@ -78,10 +89,11 @@ proc myProc()
 		//ast.print(&ast_v);
 	}
 
-	if true
+	if false
 	{
 		parse_file_test("resources/scripts/basic_proc.lum");
 		parse_file_test("resources/scripts/parse_logic.lum");
 	}
 
+	analyze_file_test("resources/scripts/test_analyzer.lum");
 }

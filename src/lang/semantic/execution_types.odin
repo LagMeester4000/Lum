@@ -1,5 +1,7 @@
 package semantic
 
+import ast "../ast"
+
 Body_Builder :: struct
 {
 	ret: Proc_Body,
@@ -22,6 +24,13 @@ Var_Decl :: struct
 {
 	name: string,
 	type: Type_Id,
+}
+
+// Declare and assign
+Var_Decl_Assign :: struct
+{
+	decl: Var_Decl,
+	expr: ^Expression,
 }
 
 // Handle to a declared variable
@@ -63,9 +72,10 @@ Symbol :: union
 {
 	Scope,
 	Var_Decl,
-	Condition_Chain, // If-elif-else statements
+	Var_Decl_Assign,
+	//Contition_Chain, // If-elif-else statements
+	Condition_Branch,
 	Loop,
-
 	Assignment, // Assign a variable to a value
 	//Expression,
 	Function_Call, // Function call or expression that calls multiple functions
@@ -74,15 +84,47 @@ Symbol :: union
 	Continue,
 }
 
-Condition_Chain :: struct {}
-Loop :: struct {}
-Return :: struct {}
-Break :: struct {}
-Continue :: struct {}
+// If/else statement
+// These will be parsed indi
+// expr can be nil, which means it is the end of an if-else chain
+Condition_Branch :: struct 
+{
+	if_type: ast.If_Type,
+	expr: ^Expression,
+	block: ^Symbol,
+}
+
+Condition_Chain :: struct
+{
+	conditions: [dynamic]Condition_Branch,
+}
+
+Loop :: struct 
+{
+	init_loop: ^Symbol,
+	condition: ^Expression,
+	post_loop: ^Symbol,
+	run: ^Symbol,
+}
+
+Return :: struct 
+{
+	expr: ^Expression,
+}
+
+Break :: struct 
+{
+	// Left empty on purpose
+}
+
+Continue :: struct 
+{
+	// Left empty on purpose
+}
 
 Assignment :: struct
 {
-	assigned_to: Access_Chain,
+	assigned_to: ^Expression, // Needs to be checked to be Access_Chain
 	value: ^Expression,
 }
 
@@ -163,3 +205,4 @@ Literal :: union
 	string, // string
 	bool, // bool
 }
+

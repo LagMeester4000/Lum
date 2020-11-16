@@ -29,6 +29,7 @@ Builtin_Type :: enum
 	NoType, // This type does not exist, used for type_id 0
 	Int,
 	Num,
+	Bool,
 	String,
 	Array,
 	Map,
@@ -57,6 +58,7 @@ Proc_Decl :: struct
 	name: string,
 	arguments: [dynamic]Var_Decl,
 	ret: Type_Id,
+	is_external: bool,
 	body: Proc_Body, 
 	body_node: ^ast.Proc_Def,
 }
@@ -73,7 +75,38 @@ Analyzer :: struct
 	allocator: mem.Arena,
 }
 
-analyze :: proc(root: ^ast.Node)
+// TODO: add custom allocator to prevent leaks
+make_global_scope :: proc() -> Global_Scope
+{
+	scope: Global_Scope;
+
+	// Register baisc types
+	register_type(&scope, Basic_Type_Decl {
+		name = "__ERROR_TYPE",
+		type = .NoType,
+	});
+	register_type(&scope, Basic_Type_Decl {
+		name = "int",
+		type = .Int,
+	});
+	register_type(&scope, Basic_Type_Decl {
+		name = "num",
+		type = .Num,
+	});
+	register_type(&scope, Basic_Type_Decl {
+		name = "bool",
+		type = .Bool,
+	});
+	register_type(&scope, Basic_Type_Decl {
+		name = "string",
+		type = .String,
+	});
+
+	return scope;
+}
+
+// TODO: add custom allocator to prevent leaks
+analyze :: proc(glob: ^Global_Scope, root: ^ast.Block, lexer: ^lex.Lexer) 
 {
 	// What needs to happen:
 	//
@@ -91,6 +124,12 @@ analyze :: proc(root: ^ast.Node)
 	//
 	// 4. Go back into every procedure body and make the executable tree.
 	//
+
+	scope := glob;
+	scan_for_types(scope, root, lexer);
+	link_up_types(scope, lexer);
+	scan_for_procs(scope, root, lexer);
+	build_proc_bodies(scope, lexer);
 }
 
 register_type :: proc(scope: ^Global_Scope, type: Type_Decl) -> Type_Id
@@ -105,6 +144,15 @@ register_proc :: proc(scope: ^Global_Scope, proc_v: Proc_Decl) -> Proc_Id
 	ind := len(scope.proc_table);
 	append(&scope.proc_table, proc_v);
 	return cast(Proc_Id)ind;
+}
+
+find_proc :: proc(scope: ^Global_Scope, procname: string) -> Proc_Id
+{
+	for p, i in &scope.proc_table
+	{
+		if p.name == procname do return Proc_Id(i);
+	}
+	return 0;
 }
 
 find_type :: proc(scope: ^Global_Scope, typename: string, print_error := true,
@@ -157,16 +205,17 @@ any_ptr :: proc(any_v: any, $T: typeid) -> (ptr: ^T, ok: bool)
 }
 
 // 1. Scan every root node for types (structs).
-scan_for_types :: proc(scope: ^Global_Scope, node: ^ast.Node, lexer: ^lex.Lexer)
+scan_for_types :: proc(scope: ^Global_Scope, node: ^ast.Block, lexer: ^lex.Lexer)
 {
 	if node == nil do return;
+	block := node;
 	//block, ok := &node.derived.(ast.Block);
-	block, ok := any_ptr(node.derived, ast.Block);
-	if !ok 
-	{
-		fmt.println("Analyzer error: root node is not a block");
-		return;
-	}
+	//block, ok := any_ptr(node.derived, ast.Block);
+	//if !ok 
+	//{
+		//fmt.println("Analyzer error: root node is not a block");
+		//return;
+	//}
 
 	for stmt in block.exprs
 	{
@@ -208,14 +257,14 @@ link_up_types :: proc(scope: ^Global_Scope, lexer: ^lex.Lexer)
 }
 
 // 3. Scan every root node for procs, and register the signature.
-scan_for_procs :: proc(scope: ^Global_Scope, node: ^ast.Node, lexer: ^lex.Lexer)
+scan_for_procs :: proc(scope: ^Global_Scope, block: ^ast.Block, lexer: ^lex.Lexer)
 {
 	//block, ok := &node.derived.(ast.Block);
-	block, ok := any_ptr(node.derived, ast.Block);
-	if !ok
-	{
-		fmt.println("Analyzer error: root node is not a block");
-	}
+	//block, ok := any_ptr(node.derived, ast.Block);
+	//if !ok
+	//{
+		//fmt.println("Analyzer error: root node is not a block");
+	//}
 
 	for stmt in block.exprs
 	{
@@ -237,7 +286,15 @@ scan_for_procs :: proc(scope: ^Global_Scope, node: ^ast.Node, lexer: ^lex.Lexer)
 		}
 
 		// Return
-		decl.ret = find_type_from_node(scope, as_proc.ret, lexer);
+		if as_proc.ret != nil
+		{
+			decl.ret = find_type_from_node(scope, as_proc.ret, lexer);
+		}
+		else
+		{
+			// Does not have a return type
+			decl.ret = 0;
+		}
 
 		register_proc(scope, decl);
 	}
@@ -246,5 +303,15 @@ scan_for_procs :: proc(scope: ^Global_Scope, node: ^ast.Node, lexer: ^lex.Lexer)
 // 4. Go back into every procedure body and make the executable tree.
 build_proc_bodies :: proc(scope: ^Global_Scope, lexer: ^lex.Lexer)
 {
-	//for 
+	builder := Body_Builder {
+		global_scope = scope,
+	};
+	
+	for p in &scope.proc_table
+	{
+		if p.is_external do continue;
+
+		builder.decl = &p;
+		p.body.body = build_block(p.body_node.block, &builder, lexer);
+	}
 }
