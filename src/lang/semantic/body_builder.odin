@@ -28,12 +28,20 @@ type_name :: proc(id: Type_Id, builder: ^Body_Builder) -> string
 	return "";
 }
 
-declare_var :: proc(scope: ^Scope, var: Var_Decl)
+declare_var :: proc(scope: ^Scope, var: Var_Decl) -> Var_Handle
 {
+	var_ind := len(scope.decls);
 	append(&scope.decls, var);
-	new_sym := new(Symbol);
-	new_sym^ = var;
-	append(&scope.symbols, new_sym);
+	// Is this really supposed to be here?
+	//new_sym := new(Symbol);
+	//new_sym^ = var;
+	//append(&scope.symbols, new_sym);
+
+	// Make var handle
+	ret: Var_Handle;
+	ret.reg_type = .Scope;
+	ret.scope_depth = 0;
+	ret.index = var_ind;
 }
 
 // TODO: Improve error handling
@@ -229,10 +237,11 @@ build_statement :: proc(statement: ^ast.Stmt, builder: ^Body_Builder,
 			}
 			expr := build_expr(s.assignment, builder, lexer, true);
 			dec.type = expr.resulting_type;
-			declare_var(current_scope(builder), dec);
+			decl_var_handle := declare_var(current_scope(builder), dec);
 
 			decl_assign: Var_Decl_Assign;
 			decl_assign.decl = dec;
+			decl_assign.handle = decl_var_handle;
 			decl_assign.expr = expr;
 			ret := new(Symbol);
 			ret^ = decl_assign;

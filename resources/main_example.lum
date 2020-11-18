@@ -75,6 +75,24 @@ proc basic_types()
 	// var appended_string = 5 + " is a value"; // ERROR
 }
 
+proc casting()
+{
+	// Casting only works on basic types, since there is no clear way to convert
+	//   between struct types
+	var a_num: num = 5.0;
+	var converted_to_int = int(a_num);
+
+	// The other way also works
+	var an_int = 10;
+	var converted_to_num = num(an_int);
+
+	// Converting from bool to int/num will result in 0 for false and 1 for true
+	var bool_to_num = num(true); // 1.0
+	var bool_to_int = int(false); // 0
+
+	// Converting from a string to an int/num is done with other functions
+}
+
 
 proc operators()
 {

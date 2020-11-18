@@ -2,6 +2,23 @@ package runner
 
 import sem "../semantic"
 
+import "core:runtime"
+import "core:reflect"
+
+union_type_compare :: proc( a, b : any ) -> bool
+{
+    if a == nil || b == nil do return b == nil && a == nil;
+    if a.id != b.id do return reflect.union_variant_typeid(a) == reflect.union_variant_typeid(b);
+
+    ti := runtime.type_info_base(type_info_of(a.id));
+    if info, ok := ti.variant.(runtime.Type_Info_Union); ok {
+        a_tag := (cast(^u64)(uintptr(a.data) + info.tag_offset))^;
+        b_tag := (cast(^u64)(uintptr(b.data) + info.tag_offset))^;
+        return a_tag == b_tag;
+    }
+    return false;
+}
+
 run :: proc(runner: ^Runner, procedure_name := "main")
 {
 	proc_index := sem.find_proc(&runner.scope, procedure_name);
@@ -127,34 +144,330 @@ run_scope :: proc(runner: ^Runner, scope: ^Scope) -> Action_Code
 	defer pop_frame_top(runner, decl_size);
 
 	// Initialize declarations
-
+	//for d in &scope.decls
 
 	// Run symbols
+	last_completed_if: int = -2;
 	for s, i in scope.symbols
 	{
 		switch v in s
 		{
-		case Var_Decl:
+		case sem.Var_Decl:
 			// Empty on purpose
 
-		case Scope:
+		case sem.Scope:
 			run_scope(runner, &v);
 
-		case Var_Decl_Assign:
+		case sem.Var_Decl_Assign:
+			assign_value := run_expression(runner, v.expr);
+			stack := get_current_stack(runner);
+			var_loc := get_var_location(stack, v.handle);
+			stack.values[var_loc] = assign_value;
 
-		case Condition_Branch:
-		case Loop:
-		case Assignment:
-		case Function_Call:
-		case Return:
+		case sem.Condition_Branch:
+			can_check := true;
+			if v.if_type == .ElseIf || v.if_type == .Else
+			{
+				// Check if the previous if statement was completed
+				if last_completed_if == i - 1
+				{
+					can_check = false;
+					// Any subsequent else/elif statements cannot continue either
+					last_comleted_if = i;
+				}
+			}
+
+			if can_check
+			{
+				cond_value := run_expression(runner, v.expr);
+
+				as_bool, bool_ok := cond_value.(bool);
+				if !bool_ok
+				{
+					panic("the expression returned a bool, that should not happen");
+				}
+				else if as_bool
+				{
+					// The statement returned true, execute the block
+					last_comleted_if = i;
+
+					as_scope, scope_ok := v.block.(sem.Scope);
+					if !scope_ok do panic("condition block is not of type scope");
+
+					code := run_scope(runner, &as_scope);
+					if code != .None
+					{
+						return code;
+					}
+				}
+			}
+
+		case sem.Assignment:
+			as_access, access_ok := v.value.variant.(sem.Access_Chain);
+			if access_ok
+			{
+				assert(len(as_access.chain) == 1);
+				access := as_access.chain[0];
+				as_handle, handle_ok := access.(sem.Var_Handle);
+				assert(handle_ok);
+
+				stack := get_current_stack(runner);
+				stack.values[get_var_location(stack, as_handle)] = 
+					run_expression(runner, v.value);
+			}
+
+		case sem.Function_Call:
+			// Lookup procedure to see if it is external
+			proc_ref := &runner.metadata.proc_table[v.procedure];
+
+			if proc_ref.is_external
+			{
+				ext_proc := runner.external_procs[v.procedure];
+
+				arg_buffer := make([dynamic]Value);
+				defer delete(arg_buffer);
+				for arg in v.arguments
+				{
+					append(&arg_buffer, run_expression(runner, arg));
+				}
+
+				ext_proc(runner, arg_buffer[:]);
+			}
+			else
+			{
+				// TODO: argument values
+			}
+
+		case sem.Loop:
+		case sem.Return:
 			return .Return;
-			
-		case Break:
+
+		case sem.Break:
 			return .Break;
 
-		case Continue:
+		case sem.Continue:
 			return .Continue;
 		}
 	}
 
+}
+
+operate_on_value :: proc(left, right: Value, operator: sem.Operator) -> Value
+{
+	switch operator	
+	{
+	case .Plus: 
+		op_proc :: proc(lhs: $T, rhs: T) -> T { return lhs + rhs; }
+		#partial switch l in left
+		{
+		case i32:
+			#partial switch r in right 
+			{
+			case i32: return op_proc(l, r);
+			case f32: return op_proc(f32(l), r);
+			}
+		case f32:
+			#partial switch r in right 
+			{
+			case i32: return op_proc(l, f32(r));
+			case f32: return op_proc(l, r);
+			}
+		}
+	case .Minus: 
+		op_proc :: proc(lhs: $T, rhs: T) -> T { return lhs - rhs; }
+		#partial switch l in left
+		{
+		case i32:
+			#partial switch r in right 
+			{
+			case i32: return op_proc(l, r);
+			case f32: return op_proc(f32(l), r);
+			}
+		case f32:
+			#partial switch r in right 
+			{
+			case i32: return op_proc(l, f32(r));
+			case f32: return op_proc(l, r);
+			}
+		}
+	case .Multiply: 
+		op_proc :: proc(lhs: $T, rhs: T) -> T { return lhs * rhs; }
+		#partial switch l in left
+		{
+		case i32:
+			#partial switch r in right 
+			{
+			case i32: return op_proc(l, r);
+			case f32: return op_proc(f32(l), r);
+			}
+		case f32:
+			#partial switch r in right 
+			{
+			case i32: return op_proc(l, f32(r));
+			case f32: return op_proc(l, r);
+			}
+		}
+	case .Divide: 
+		op_proc :: proc(lhs: $T, rhs: T) -> T { return lhs / rhs; }
+		#partial switch l in left
+		{
+		case i32:
+			#partial switch r in right 
+			{
+			case i32: return op_proc(l, r);
+			case f32: return op_proc(f32(l), r);
+			}
+		case f32:
+			#partial switch r in right 
+			{
+			case i32: return op_proc(l, f32(r));
+			case f32: return op_proc(l, r);
+			}
+		}
+
+	// LOGIC
+	case .And: 
+		#partial switch l in left
+		{
+		case bool:
+			#partial switch r in right
+			{
+			case bool:
+				return l && r;
+			}
+		}
+	case .Or: 
+		#partial switch l in left
+		{
+		case bool:
+			#partial switch r in right
+			{
+			case bool:
+				return l || r;
+			}
+		}
+
+	// COMPARE
+	case .Equals_Equals:
+		op_proc :: proc(lhs: $T, rhs: T) -> T { return lhs == rhs; }
+		#partial switch l in left
+		{
+		case i32:
+			#partial switch r in right
+			{
+			case i32: return op_proc(l, r);
+			case f32: return op_proc(f32(l), r);
+			}
+		case f32:
+			#partial switch r in right
+			{
+			case i32: return op_proc(l, f32(r));
+			case f32: return op_proc(l, r);
+			}
+		case bool:
+			#partial switch r in right
+			{
+			case bool: return op_proc(l, r);
+			}
+		case string:
+			#partial switch r in right
+			{
+			case string: return op_proc(l, r);
+			}
+		}
+	case .Greater_Equals:
+		op_proc :: proc(lhs: $T, rhs: T) -> T { return lhs >= rhs; }
+		#partial switch l in left
+		{
+		case i32:
+			#partial switch r in right
+			{
+			case i32: return op_proc(l, r);
+			case f32: return op_proc(f32(l), r);
+			}
+		case f32:
+			#partial switch r in right
+			{
+			case i32: return op_proc(l, f32(r));
+			case f32: return op_proc(l, r);
+			}
+		}
+	case .Greater:
+		op_proc :: proc(lhs: $T, rhs: T) -> T { return lhs > rhs; }
+		#partial switch l in left
+		{
+		case i32:
+			#partial switch r in right
+			{
+			case i32: return op_proc(l, r);
+			case f32: return op_proc(f32(l), r);
+			}
+		case f32:
+			#partial switch r in right
+			{
+			case i32: return op_proc(l, f32(r));
+			case f32: return op_proc(l, r);
+			}
+		}
+	case .Less_Equals:
+		op_proc :: proc(lhs: $T, rhs: T) -> T { return lhs <= rhs; }
+		#partial switch l in left
+		{
+		case i32:
+			#partial switch r in right
+			{
+			case i32: return op_proc(l, r);
+			case f32: return op_proc(f32(l), r);
+			}
+		case f32:
+			#partial switch r in right
+			{
+			case i32: return op_proc(l, f32(r));
+			case f32: return op_proc(l, r);
+			}
+		}
+	case .Less:
+		op_proc :: proc(lhs: $T, rhs: T) -> T { return lhs < rhs; }
+		#partial switch l in left
+		{
+		case i32:
+			#partial switch r in right
+			{
+			case i32: return op_proc(l, r);
+			case f32: return op_proc(f32(l), r);
+			}
+		case f32:
+			#partial switch r in right
+			{
+			case i32: return op_proc(l, f32(r));
+			case f32: return op_proc(l, r);
+			}
+		}
+	}
+}
+
+run_expression :: proc(runner: ^Runner, expr: ^sem.Expression) -> Value
+{
+	ret: Value;
+	switch e in expr.variant
+	{
+	case sem.Xary_Expression:
+		ret = run_expression(runner, e.expressions[0]);
+		for o, oi in &e.operators
+		{
+			new_expr := &e.expressions[oi + 1];
+			new_val := run_expression(runner, new_expr);
+			ret = operate_on_value(ret, new_val, o);
+		}
+
+	case sem.Unary_Expression:
+		// Unimplemented
+
+	case sem.Access_Chain:
+		
+
+	case sem.Literal:
+		ret = value_from_sem_literal(e);
+	}
+	return ret;
 }

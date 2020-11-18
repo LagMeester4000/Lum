@@ -30,6 +30,7 @@ Var_Decl :: struct
 Var_Decl_Assign :: struct
 {
 	decl: Var_Decl,
+	handle: Var_Handle,
 	expr: ^Expression,
 }
 

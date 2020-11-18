@@ -40,3 +40,111 @@ it's pretty clear what a normal function declaration does, but when you see
 this new declaration you will need to know what it means.
 
 
+
+Here is another idea:
+
+interface Entity
+{
+	proc init_entity(entity: struct, level: Level),
+	proc update_entity(entity: struct, level: Level),
+}
+
+struct Player 
+{
+	x: num,
+	y: num,
+}
+
+proc init_entity(player: Player, level: Level)
+{
+	player.x = 0.0;
+	player.y = 0.0;
+}
+
+proc update_entity(player: Player, level: Level)
+{
+	player.x += 1.0;
+}
+
+The functions defined in the "interface" block are overloadable, but only with the
+argument given the "struct" type, also the return type cannot change. This way it
+does not really mess with the general structure of the language. This might seem 
+error prone, but let me show you first:
+
+interface Entity
+{
+	// These procedures are declared in global scope
+	proc init_entity(entity: struct, level: Level),
+	proc update_entity(entity: struct, level: Level),
+}
+
+struct Player
+{
+	x: num,
+	y: num,
+}
+
+proc update_entity(player: Player, level: Level)
+{
+	player.x += 1.0;
+}
+
+proc main()
+{
+	var my_entity: Entity;
+	my_entity = new(Player);
+}
+
+This will give a compile error on the second line of the main function:
+"Cannot assign value of type Player to value of type Entity, as it does not
+implement: proc init(entity: struct, level: Level)"
+A type can only be used as an interface if it implements all the functions of that
+interface, which is checked when it is actually assigned to said interface.
+This is how the interface functions are called (continuing from the previous 
+examples):
+
+...
+
+proc main()
+{
+	var my_level = make_level();
+	var my_entity: Entity;
+	my_entity = new(Player);
+	init_entity(my_entity, my_level);
+	update_entity(my_entity, my_level);
+}
+
+It's called like any other procedure.
+
+Next up: the data of an interface. Internally, an interface object is stored on
+the stack as a pointer with an integer, like this:
+Interface :: struct
+{
+	reference: Lum_Ptr,
+	type: Lum_Type_Id,
+}
+The reference value is the same value as the initially created reference to the 
+child type, the type value is an index signifying the type of the reference or to 
+a vtable that belongs to the implementation of the interface (if that's easier).
+
+The next thing I might want to add is an attribute that can be applied to structs
+to specify that it implements an interface:
+
+@implements(Entity)
+struct Player
+{
+	x: num,
+	y: num,
+}
+
+Then it can instantly give an error message if the methods of an interface are not
+implemented. Though there is another way to do that: since Lum only allows specific
+overloading for the procedures described in an interface, if a type only implements
+one of the procedures of an interface, it will/can give an error.
+
+
+
+
+
+
+
