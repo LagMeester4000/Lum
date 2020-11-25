@@ -1,0 +1,27 @@
+
+Another way to reduce memory overhead and heap fragmentation is by allowing raw 
+structs. What I mean is that not every struct is allocated on the heap.
+
+This is more of an advanced feature because it breaks some of the language 
+semantics.
+
+struct Vec2
+{
+	x: num,
+	y: num,
+}
+
+struct Player
+{
+	position: raw Vec2,
+	velocity: raw Vec2,
+}
+
+proc main()
+{
+	var player = new(Player);
+	player.position = raw(Vec2);
+}
+
+Aside from this, I want to make some more basic value types to avoid this first,
+like vec2, vec3, vec4, vec2i, vec3i, vec4i

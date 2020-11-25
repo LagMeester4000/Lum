@@ -1,0 +1,14 @@
+
+proc main()
+{
+	var an_int = 10;
+	var other_int = 5;
+	var added = add(an_int, other_int);
+	print(added);
+}
+
+proc add(left: int, right: int) int
+{
+	return left + right;
+}
+

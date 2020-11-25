@@ -1,0 +1,42 @@
+when a function call happens
+
+proc calc_number(left: num, right: num) num
+{
+	var ret = left + right;
+	return ret;
+}
+
+proc main()
+{
+	var a_num = 5.0;
+	var another_num = 10.0;
+	var calculated = calc_number(a_num, another_num);
+}
+
+
+Lets compile this to bytecode
+
+Lit 5.0
+Store_Stack 0
+Lit 10.0
+Store_Stack 1
+Push_Inst_Ptr 3
+Load_Stack 0
+Load_Stack 1
+Call 1 // Call function 1
+
+1:
+// Store the function args on the stack
+Store_Stack 1
+Store_Stack 0
+Load_Stack 0
+Load_Stack 1
+Add_Num
+Return
+
+
+
+Maybe the call stack objects should also hold the current instruction pointer and
+current member stack size
+
+

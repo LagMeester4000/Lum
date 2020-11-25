@@ -3,6 +3,7 @@ package lang
 import "lexer"
 import "ast"
 import "semantic"
+import "vm"
 
 import "core:fmt"
 import "core:os"
@@ -41,7 +42,18 @@ analyze_file_test :: proc(filename: string)
 	syntax_tree := ast.parse(string(file));
 	node := syntax_tree.root;
 	scope := semantic.make_global_scope();
-	semantic.analyze(&scope, node, &syntax_tree.lexer);
+	bytecode, bytecode_ok := semantic.analyze(&scope, node, &syntax_tree.lexer);
+
+	if bytecode_ok
+	{
+		fmt.println("bytecode dump:");
+		vm.print_bytecode(&bytecode);
+
+		fmt.println("running...");
+		virtual_machine := vm.make_vm(bytecode);
+		vm.run(&virtual_machine);
+	}
+
 	fmt.println("done");
 }
 
@@ -96,4 +108,6 @@ proc myProc()
 	}
 
 	analyze_file_test("resources/scripts/test_analyzer.lum");
+	analyze_file_test("resources/scripts/test_vm.lum");
+	analyze_file_test("resources/scripts/test_branch.lum");
 }

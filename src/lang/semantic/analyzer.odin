@@ -2,6 +2,7 @@ package semantic
 
 import ast "../ast"
 import lex "../lexer"
+import vm "../vm"
 
 import "core:fmt"
 import "core:strings"
@@ -59,7 +60,7 @@ Proc_Decl :: struct
 	arguments: [dynamic]Var_Decl,
 	ret: Type_Id,
 	is_external: bool,
-	body: Proc_Body, 
+	//body: Proc_Body, 
 	body_node: ^ast.Proc_Def,
 }
 
@@ -102,11 +103,18 @@ make_global_scope :: proc() -> Global_Scope
 		type = .String,
 	});
 
+	// Register basic functions
+	null_proc: Proc_Decl;
+	null_proc.name = "INVALID_PROC";
+	null_proc.is_external = true;
+	register_proc(&scope, null_proc);
+
 	return scope;
 }
 
 // TODO: add custom allocator to prevent leaks
 analyze :: proc(glob: ^Global_Scope, root: ^ast.Block, lexer: ^lex.Lexer) 
+	-> (val: vm.Bytecode, ok: bool)
 {
 	// What needs to happen:
 	//
@@ -129,7 +137,7 @@ analyze :: proc(glob: ^Global_Scope, root: ^ast.Block, lexer: ^lex.Lexer)
 	scan_for_types(scope, root, lexer);
 	link_up_types(scope, lexer);
 	scan_for_procs(scope, root, lexer);
-	build_proc_bodies(scope, lexer);
+	return build_proc_bodies(scope, lexer);
 }
 
 register_type :: proc(scope: ^Global_Scope, type: Type_Decl) -> Type_Id
@@ -302,16 +310,32 @@ scan_for_procs :: proc(scope: ^Global_Scope, block: ^ast.Block, lexer: ^lex.Lexe
 
 // 4. Go back into every procedure body and make the executable tree.
 build_proc_bodies :: proc(scope: ^Global_Scope, lexer: ^lex.Lexer)
+	-> (val: vm.Bytecode, ok: bool)
 {
-	builder := Body_Builder {
-		global_scope = scope,
-	};
+	bytecode: vm.Bytecode;
+	had_error: bool = false;
 	
-	for p in &scope.proc_table
+	for p, pi in &scope.proc_table
 	{
 		if p.is_external do continue;
 
+		// Make new builder
+		builder := Body_Builder {
+			glob_scope = scope,
+			lexer = lexer,
+			proc_id = Proc_Id(pi),
+		};
+
 		builder.decl = &p;
-		p.body.body = build_block(p.body_node.block, &builder, lexer);
+		//p.body.body = build_block(p.body_node.block, &builder, lexer);
+		builder.bytecode = &bytecode;
+		build_proc(&builder);
+
+		if len(builder.errors) > 0
+		{
+			had_error = true;
+		}
 	}
+
+	return bytecode, !had_error;
 }

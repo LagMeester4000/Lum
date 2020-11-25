@@ -365,7 +365,8 @@ parse_access :: proc(ast: ^Ast) -> ^Expr
 		return access;
 
 	case .Int_Number,
-		.Float_Number:
+		.Float_Number,
+		.True, .False:
 		lit := make_node(Literal_Value);
 		lit.value = advance_token(ast);
 		return lit;

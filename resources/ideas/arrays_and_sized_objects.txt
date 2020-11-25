@@ -1,0 +1,8 @@
+
+How will arrays work in lum?
+3 options:
+- 3 variables on the stack (lenght, capacity, pointer)
+- pointer to structure with 3 variables (lenght, capacity, pointer)
+- pointer to array, with space at the start for 2 variables (len, cap)
+
+

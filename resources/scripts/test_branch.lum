@@ -1,0 +1,15 @@
+
+proc main()
+{
+	var thing = false;
+
+	if thing
+	{
+		print(1);
+	}
+
+	print(2);
+}
+
+
+
